@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\SendMailCodeForgotPasswordEvent;
+use App\Events\SendMailVerificationEvent;
 use Throwable;
-use App\Models\User;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -11,16 +12,16 @@ use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use App\Http\Requests\Api\Auth\RegisterRequest;
+use App\Services\Internals\User\UserServiceInterface;
 
 class AuthController extends Controller
 {
-    private $user;
+    private $userService;
 
-    public function __construct(User $user)
+    public function __construct(UserServiceInterface $userService)
     {
-        $this->user = $user;
+        $this->userService = $userService;
     }
 
     /**
@@ -41,9 +42,9 @@ class AuthController extends Controller
                 'verification_token' => Str::random(40) . time(),
             ];
             // Create a new user
-            $user = $this->user->create($data);
+            $user = $this->userService->store($data);
             // Send verification email
-            $this->sendVerificationEmail($user);
+            event(new SendMailVerificationEvent($user));
 
             return successResponse(Response::HTTP_CREATED, [], __('common.msg_register_success'));
         } catch (Throwable $thow) {
@@ -51,23 +52,6 @@ class AuthController extends Controller
 
             return failResponse(Response::HTTP_BAD_REQUEST, [], __('common.msg_register_error'));
         }
-    }
-
-    /**
-     * Handle send main verification email
-     *
-     * @param User $user
-     * 
-     * @return void
-     */
-    private function sendVerificationEmail(User $user)
-    {
-        $token = $user->verification_token;
-        $verificationUrl = '/verify-email?token=$token';
-
-        Mail::send('emails.verify-email', compact('verificationUrl', 'token'), function ($message) use ($user) {
-            $message->to($user->email)->subject(__('common.lbl_subject_mail_verify'));
-        });
     }
 
     /**
@@ -84,7 +68,12 @@ class AuthController extends Controller
             'token' => 'required|string|size:50',
         ]);
         // Find user by verification token
-        $user = User::where('verification_token', $request->token)->whereNull('email_verified_at')->first();
+        $user = $this->userService->getFirstBy(
+            collect([
+                'verification_token' => $request->token,
+                'is_where_null_email_verified_at' => true,
+            ])
+        );
 
         if (empty($user)) {
             return failResponse(Response::HTTP_BAD_REQUEST, __('common.msg_invalid_verify_token'));
@@ -92,9 +81,14 @@ class AuthController extends Controller
 
         try {
             // Mark email as verified
-            $user->email_verified_at = now();
-            $user->verification_token = null;
-            $user->save();
+            $this->userService->update(
+                collect([
+                    'email_verified_at' => now(),
+                    'verification_token' => null,
+                ], collect([
+                    'id' => $user->id,
+                ]))
+            );
 
             return successResponse(Response::HTTP_OK, [], __('common.msg_email_verify_success'));
         } catch (Throwable $thow) {
@@ -116,7 +110,11 @@ class AuthController extends Controller
         $request->validate([
             'email' => 'required|email',
         ]);
-        $user = $this->user->where('email', $request->get('email'))->first();
+        $user = $this->userService->getFirstBy(
+            collect([
+                'email' => $request->get('email'),
+            ])
+        );
 
         if (empty($user)) {
             return failResponse(Response::HTTP_BAD_REQUEST, __('common.msg_find_not_found', ['data' => 'user']));
@@ -131,10 +129,16 @@ class AuthController extends Controller
         ];
 
         try {
-            $user->code_forgot_password = json_encode($data);
-            $user->save();
+            $this->userService->update(
+                collect([
+                    'code_forgot_password' => json_encode($data),
+                ]),
+                collect([
+                    'id' => $user->id,
+                ])
+            );
             // Send mail
-            $this->sendCodeForgotPasswordEmail($user, $data);
+            event(new SendMailCodeForgotPasswordEvent($user, $data));
 
             return successResponse(Response::HTTP_OK, [], __('common.msg_email_forgot_success'));
         } catch (Throwable $thow) {
@@ -142,23 +146,6 @@ class AuthController extends Controller
 
             return failResponse(Response::HTTP_BAD_REQUEST, __('common.msg_email_forgot_fail'));
         }
-    }
-
-    /**
-     * Handle send code forgot password email
-     *
-     * @param User $user
-     * @param $data
-     * 
-     * @return void
-     */
-    private function sendCodeForgotPasswordEmail(User $user, $data)
-    {
-        $code = $data['code'];
-
-        Mail::send('emails.forgot-email', compact('code'), function ($message) use ($user) {
-            $message->to($user->email)->subject(__('common.lbl_subject_mail_forgot'));
-        });
     }
 
     /**
@@ -177,7 +164,11 @@ class AuthController extends Controller
             'password_confirmation' => 'required|string|min:8',
         ]);
 
-        $user = $this->user->where('email', $request->get('email'))->first();
+        $user = $this->userService->getFirstBy(
+            collect([
+                'email' => $request->get('email'),
+            ])
+        );
 
         if (empty($user) || empty($user->code_forgot_password)) {
             return failResponse(Response::HTTP_BAD_REQUEST, __('common.msg_find_not_found', ['data' => 'user']));
@@ -199,9 +190,15 @@ class AuthController extends Controller
         }
 
         try {
-            $user->password = Hash::make($request->get('password'));
-            $user->code_forgot_password = null;
-            $user->save();
+            $this->userService->update(
+                collect([
+                    'password' => Hash::make($request->get('password')),
+                    'code_forgot_password' => null,
+                ]),
+                collect([
+                    'id' => $user->id,
+                ])
+            );
 
             return successResponse(Response::HTTP_OK, [], __('common.msg_reset_password_success'));
         } catch (Throwable $thow) {
@@ -224,6 +221,16 @@ class AuthController extends Controller
             'email' => 'required|email',
             'password' => 'required',
         ]);
+
+        $user = $this->userService->getFirstBy(
+            collect([
+                'email' => $request->get('email'),
+            ])
+        );
+
+        if (!empty($user) && empty($user->email_verified_at)) {
+            return failResponse(Response::HTTP_BAD_REQUEST, __('common.msg_not_verify_email'));
+        }
 
         if (!Auth::attempt($request->only('email', 'password'))) {
             return failResponse(Response::HTTP_BAD_REQUEST, __('common.msg_login_fail'));

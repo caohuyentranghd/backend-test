@@ -2,25 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use App\Http\Controllers\Controller;
+use App\Services\Internals\User\UserServiceInterface;
 use Illuminate\Support\Facades\Auth;
 use Throwable;
 
 class UserController extends Controller
 {
-    private $user;
+    private $service;
 
-    public function __construct(User $user)
+    public function __construct(UserServiceInterface $service)
     {
-        $this->user = $user;
-    }
-
-    public function getList(Request $request)
-    {
-        
+        $this->service = $service;
     }
 
     /**
@@ -35,7 +30,7 @@ class UserController extends Controller
         $result = [
             'name' => $user->name,
             'email' => $user->email,
-            'updated_at' => $user->updated_at,
+            'updated_at' => $user->updated_at->format('Y-m-d H:i:s'),
             'list_movie_favorite' => $favorites,
         ];
 
@@ -60,12 +55,16 @@ class UserController extends Controller
         }
 
         try {
-            $user->name = $request->name;
-            $user->save();
+            $this->service->update(
+                collect([
+                    'name' => $request->get('name'),
+                ]),
+                collect(['id' => $user->id])
+            );
             $result = [
-                'name' => $user->name,
+                'name' => $request->get('name'),
                 'email' => $user->email,
-                'updated_at' => $user->updated_at,
+                'updated_at' => $user->updated_at->format('Y-m-d H:i:s'),
             ];
 
             return successResponse(Response::HTTP_OK, $result);

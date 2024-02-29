@@ -17,6 +17,7 @@ if (!function_exists('successPaginateResponse')) {
         $data->setPath('/' . app()->make('request')->path());
         $tmpResult = $data->toArray();
         $data = $tmpResult['data'];
+        unset($tmpResult['links']);
         unset($tmpResult['data']);
         $result[$dataKey] = $data;
         $result['pagination'] = $tmpResult;

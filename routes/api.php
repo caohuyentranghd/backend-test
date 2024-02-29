@@ -44,7 +44,6 @@ Route::group(['prefix' => 'v1', 'middleware' => []], function () {
 
     // For User
     Route::group(['prefix' => 'user', 'middleware' => ['auth:sanctum']], function () {
-        Route::get('/list', [UserController::class, 'getList']);
         Route::get('/info', [UserController::class, 'getInfo']);
         Route::put('/update-profile', [UserController::class, 'updateProfile']);
     });

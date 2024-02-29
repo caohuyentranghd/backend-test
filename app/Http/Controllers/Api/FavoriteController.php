@@ -2,20 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\Favorite;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use App\Http\Controllers\Controller;
+use App\Services\Internals\Favorite\FavoriteServiceInterface;
 use Illuminate\Support\Facades\Auth;
 use Throwable;
 
 class FavoriteController extends Controller
 {
-    private $favorite;
+    private $service;
 
-    public function __construct(Favorite $favorite)
+    public function __construct(FavoriteServiceInterface $service)
     {
-        $this->favorite = $favorite;
+        $this->service = $service;
     }
 
     /**
@@ -30,16 +30,19 @@ class FavoriteController extends Controller
         ]);
         $user = Auth::user();
         $movieId = $request->get('movie_id');
-        $existingFavorite = $this->favorite->where('user_id', $user->id)
-            ->where('movie_id', $movieId)
-            ->exists();
+        $existingFavorite = $this->service->getFirstBy(
+            collect([
+                'user_id' => $user->id,
+                'movie_id' => $movieId,
+            ])
+        );
 
         try {
-            if ($existingFavorite) {
+            if (!empty($existingFavorite)) {
                 return successResponse(Response::HTTP_OK, [], __('common.msg_favorite_exists_list'));
             }
 
-            $result = $this->favorite->create([
+            $result = $this->service->store([
                 'user_id' => $user->id,
                 'movie_id' => $movieId,
             ]);
@@ -60,20 +63,22 @@ class FavoriteController extends Controller
         $request->validate([
             'movie_id' => 'required|exists:movies,id'
         ]);
-
         $user = Auth::user();
         $movieId = $request->get('movie_id');
 
         try {
-            $existingFavorite = $this->favorite->where('user_id', $user->id)
-                ->where('movie_id', $movieId)
-                ->first();
+            $favorite = $this->service->getFirstBy(
+                collect([
+                    'user_id' => $user->id,
+                    'movie_id' => $movieId,
+                ])
+            );
 
-            if (!$existingFavorite) {
+            if (empty($favorite)) {
                 return successResponse(Response::HTTP_OK, [], __('common.msg_favorite_not_exists_list'));
             }
 
-            $existingFavorite->delete();
+            $this->service->destroy(collect(['id' => $favorite->id]));
 
             return successResponse(Response::HTTP_OK, [], __('common.msg_remove_movie_favorite_success'));
         } catch (Throwable $thow) {

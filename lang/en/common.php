@@ -31,4 +31,5 @@ return [
     'msg_remove_movie_favorite_success' => 'The movie has been removed from the list favorite success',
     'msg_remove_movie_favorite_error' => 'The movie has been removed from the list favorite error',
     'msg_auth_token_error' => 'Oop! Token Unauthenticated.',
+    'msg_not_verify_email' => 'Oop! You must verify email before login!.',
 ];

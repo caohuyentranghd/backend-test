@@ -2,22 +2,22 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\Movie;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Movie\StoreRequest;
 use App\Http\Requests\Api\Movie\UpdateRequest;
-use Illuminate\Support\Facades\Auth;
+use App\Services\Internals\Movie\MovieServiceInterface;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class MovieController extends Controller
 {
-    private $movie;
+    private $movieService;
 
-    public function __construct(Movie $movie)
+    public function __construct(MovieServiceInterface $movieService)
     {
-        $this->movie = $movie;
+        $this->movieService = $movieService;
     }
 
     /**
@@ -29,7 +29,13 @@ class MovieController extends Controller
      */
     public function index(Request $request)
     {
-        $movies = $this->movie->orderBy('id', 'desc')->paginate(PAGINATION_PAGE_DEFAULT);
+        $movies = $this->movieService->getList(
+            collect([]),
+            collect([
+                'limit' => PAGINATION_PAGE_DEFAULT,
+                'is_sort_by_id_desc' => true,
+            ])
+        );
 
         return successPaginateResponse($movies, Response::HTTP_OK);
     }
@@ -44,9 +50,9 @@ class MovieController extends Controller
     public function show($id)
     {
         try {
-            $movie = $this->movie->findOrFail($id);
+            $movie = $this->movieService->show(collect(['id' => $id]));
 
-            return successResponse(Response::HTTP_CREATED, $movie);
+            return successResponse(Response::HTTP_OK, $movie);
         } catch (Throwable $throw) {
             return failResponse(Response::HTTP_BAD_REQUEST, __('common.msg_find_not_found', ['data' => __('movie.lbl_title')]));
         }
@@ -76,7 +82,7 @@ class MovieController extends Controller
                 'country',
                 'language',
             ]);
-            $movie = $this->movie->create($data);
+            $movie = $this->movieService->store($data);
 
             return successResponse(Response::HTTP_CREATED, $movie);
         } catch (Throwable $throw) {
@@ -94,7 +100,6 @@ class MovieController extends Controller
     public function update(UpdateRequest $request, $id)
     {
         try {
-            $movie = $this->movie->findOrFail($id);
             $data = $request->only([
                 'title',
                 'description',
@@ -109,7 +114,7 @@ class MovieController extends Controller
                 'country',
                 'language',
             ]);
-            $movie->update($data);
+            $movie = $this->movieService->update(collect($data), collect(['id' => $id]));
 
             return successResponse(Response::HTTP_OK, $movie);
         } catch (Throwable $throw) {
@@ -127,7 +132,7 @@ class MovieController extends Controller
     public function destroy($id)
     {
         try {
-            $this->movie->findOrFail($id)->delete();
+            $this->movieService->destroy(collect(['id' => $id]));
 
             return successResponse(Response::HTTP_OK, [], __('common.msg_delete_success'));
         } catch (Throwable $throw) {

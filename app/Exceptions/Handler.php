@@ -8,6 +8,7 @@ use Illuminate\Auth\AuthenticationException;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class Handler extends ExceptionHandler
@@ -59,10 +60,13 @@ class Handler extends ExceptionHandler
                     $result['message'] =  __('common.msg_auth_token_error');
                     break;
                 default:
-                    $result['status'] = Response::HTTP_NOT_ACCEPTABLE;
+                    Log::debug('--------------$exception failure handling-------------- ' . $exception->getMessage());
+                    $result['status'] = Response::HTTP_BAD_REQUEST;
                     $result['message'] =  __('common.msg_failure_handling');
                     break;
             }
+
+            Log::debug('--------------$exception-------------- ' . $exception->getMessage());
             
             return $this->failResponse($result['status'], $result['message'], $result['errors']);
         }

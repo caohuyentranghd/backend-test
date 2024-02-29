@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\Events\SendMailCodeForgotPasswordEvent;
+use App\Events\SendMailVerificationEvent;
+use App\Listeners\SendMailCodeForgotPasswordListener;
+use App\Listeners\SendMailVerificationListener;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
@@ -25,7 +29,15 @@ class EventServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Event::listen(
+            SendMailVerificationEvent::class,
+            SendMailVerificationListener::class,
+        );
+
+        Event::listen(
+            SendMailCodeForgotPasswordEvent::class,
+            SendMailCodeForgotPasswordListener::class,
+        );
     }
 
     /**
